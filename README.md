@@ -1,10 +1,17 @@
 Package **acdb** manages objects between memory and file system.
 
-**acdb** is dead simple to use:
+## Requirements
+
+- acdb has been tested and is known to run on Linux/Ubuntu, macOS and Windows(10). It will likely work fine on most OS.
+- [Go](http://golang.org) 1.8 or newer.
+
+## Installation
 
 ```sh
-go get -u -v github.com/mohanson/acdb
+go get github.com/mohanson/acdb
 ```
+
+## Example
 
 ```go
 package main

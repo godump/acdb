@@ -1,22 +1,13 @@
 package acdb
 
 import (
-	"bytes"
 	"container/list"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
-	"log"
-	"net"
-	"net/http"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 	"sync"
-	"time"
 )
 
 type Driver interface {
@@ -25,12 +16,18 @@ type Driver interface {
 	Del(k string)
 }
 
+func NewMemDriver() *MemDriver {
+	return &MemDriver{
+		data: map[string][]byte{},
+	}
+}
+
 type MemDriver struct {
-	memcache map[string][]byte
+	data map[string][]byte
 }
 
 func (d *MemDriver) Get(k string) ([]byte, error) {
-	buf, b := d.memcache[k]
+	buf, b := d.data[k]
 	if !b {
 		return buf, errors.New("key error: " + k)
 	}
@@ -38,17 +35,20 @@ func (d *MemDriver) Get(k string) ([]byte, error) {
 }
 
 func (d *MemDriver) Set(k string, v []byte) error {
-	d.memcache[k] = v
+	d.data[k] = v
 	return nil
 }
 
 func (d *MemDriver) Del(k string) {
-	delete(d.memcache, k)
+	delete(d.data, k)
 }
 
-func NewMemDriver() *MemDriver {
-	return &MemDriver{
-		memcache: map[string][]byte{},
+func NewDocDriver(root string) *DocDriver {
+	if err := os.MkdirAll(root, 0755); err != nil {
+		panic(err)
+	}
+	return &DocDriver{
+		root: root,
 	}
 }
 
@@ -83,12 +83,12 @@ func (d *DocDriver) Del(k string) {
 	os.Remove(path.Join(d.root, k))
 }
 
-func NewDocDriver(root string) *DocDriver {
-	if err := os.MkdirAll(root, 0755); err != nil {
-		panic(err)
-	}
-	return &DocDriver{
-		root: root,
+func NewLruDriver(size int) *LruDriver {
+	return &LruDriver{
+		driver: NewMemDriver(),
+		m:      map[string]*list.Element{},
+		l:      &list.List{},
+		size:   size,
 	}
 }
 
@@ -96,7 +96,7 @@ type LruDriver struct {
 	driver Driver
 	m      map[string]*list.Element
 	l      *list.List
-	cap    int
+	size   int
 }
 
 func (d *LruDriver) Get(k string) ([]byte, error) {
@@ -109,8 +109,8 @@ func (d *LruDriver) Get(k string) ([]byte, error) {
 }
 
 func (d *LruDriver) Set(k string, v []byte) error {
-	if d.l.Len() >= d.cap {
-		for i := 0; i < d.cap/4; i++ {
+	if d.l.Len() >= d.size {
+		for i := 0; i < d.size/4; i++ {
 			e := d.l.Back()
 			k := e.Value.(string)
 			d.Del(k)
@@ -135,12 +135,10 @@ func (d *LruDriver) Del(k string) {
 	}
 }
 
-func NewLruDriver(cap int) *LruDriver {
-	return &LruDriver{
-		driver: NewMemDriver(),
-		m:      map[string]*list.Element{},
-		l:      &list.List{},
-		cap:    cap,
+func NewMapDriver(root string) *MapDriver {
+	return &MapDriver{
+		doc: NewDocDriver(root),
+		lru: NewLruDriver(1024),
 	}
 }
 
@@ -181,66 +179,44 @@ func (d *MapDriver) Del(k string) {
 	d.lru.Del(k)
 }
 
-func NewMapDriver(root string, cacheSize int) *MapDriver {
-	return &MapDriver{
-		doc: NewDocDriver(root),
-		lru: NewLruDriver(cacheSize),
-	}
+func NewEmerge(driver Driver) *Emerge {
+	return &Emerge{driver: driver, m: &sync.Mutex{}}
 }
 
-type Emerge interface {
-	GetBytes(k string) ([]byte, error)
-	SetBytes(k string, v []byte) error
-	Get(k string, v interface{}) error
-	Set(k string, v interface{}) error
-	Del(k string)
-	Add(k string, n int64) error
-	Dec(k string, n int64) error
-}
-
-type JSONEmerge struct {
+type Emerge struct {
 	driver Driver
-	m      *sync.RWMutex
+	m      *sync.Mutex
 }
 
-func (e *JSONEmerge) GetBytes(k string) ([]byte, error) {
-	e.m.RLock()
-	defer e.m.RUnlock()
-	return e.driver.Get(k)
-}
-
-func (e *JSONEmerge) SetBytes(k string, v []byte) error {
+func (e *Emerge) Get(k string, v interface{}) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	return e.driver.Set(k, v)
-}
-
-func (e *JSONEmerge) Get(k string, v interface{}) error {
-	buf, err := e.GetBytes(k)
+	buf, err := e.driver.Get(k)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(buf, v)
 }
 
-func (e *JSONEmerge) Set(k string, v interface{}) error {
+func (e *Emerge) Set(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
 	buf, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	return e.SetBytes(k, buf)
+	return e.driver.Set(k, buf)
 }
 
-func (e *JSONEmerge) Del(k string) {
+func (e *Emerge) Del(k string) {
 	e.m.Lock()
 	defer e.m.Unlock()
 	e.driver.Del(k)
 }
 
-func (e *JSONEmerge) Add(k string, n int64) error {
+func (e *Emerge) Add(k string, n int64) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-
 	var (
 		i   int64
 		buf []byte
@@ -262,147 +238,11 @@ func (e *JSONEmerge) Add(k string, n int64) error {
 	return e.driver.Set(k, buf)
 }
 
-func (e *JSONEmerge) Dec(k string, n int64) error {
+func (e *Emerge) Dec(k string, n int64) error {
 	return e.Add(k, -n)
 }
 
-func NewJSONEmerge(driver Driver) *JSONEmerge {
-	return &JSONEmerge{driver: driver, m: &sync.RWMutex{}}
-}
-
-type HTTPEmerge struct {
-	server string
-	client *http.Client
-}
-
-type HTTPEmergeReq struct {
-	Command string `json:"command"`
-	K       string `json:"k"`
-	V       []byte `json:"v"`
-}
-
-type HTTPEmergeRes struct {
-	Err string `json:"err"`
-	K   string `json:"k"`
-	V   []byte `json:"v"`
-}
-
-func (e *HTTPEmerge) req(clireq *HTTPEmergeReq) (*HTTPEmergeRes, error) {
-	clires := &HTTPEmergeRes{}
-	data, err := json.Marshal(clireq)
-	if err != nil {
-		return clires, err
-	}
-	req, err := http.NewRequest("PUT", e.server, bytes.NewReader(data))
-	if err != nil {
-		return clires, err
-	}
-	res, err := e.client.Do(req)
-	if err != nil {
-		return clires, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return clires, errors.New(strconv.Itoa(res.StatusCode))
-	}
-	if err := json.NewDecoder(res.Body).Decode(clires); err != nil {
-		return clires, err
-	}
-	if clires.Err != "" {
-		return clires, errors.New(clires.Err)
-	}
-	return clires, nil
-}
-
-func (e *HTTPEmerge) GetBytes(k string) ([]byte, error) {
-	clireq := &HTTPEmergeReq{Command: "GET", K: k}
-	clires, err := e.req(clireq)
-	return clires.V, err
-}
-
-func (e *HTTPEmerge) SetBytes(k string, v []byte) error {
-	clireq := &HTTPEmergeReq{Command: "SET", K: k, V: v}
-	_, err := e.req(clireq)
-	return err
-}
-
-func (e *HTTPEmerge) Get(k string, v interface{}) error {
-	buf, err := e.GetBytes(k)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(buf, v)
-}
-
-func (e *HTTPEmerge) Set(k string, v interface{}) error {
-	buf, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	return e.SetBytes(k, buf)
-}
-
-func (e *HTTPEmerge) Del(k string) {
-	clireq := &HTTPEmergeReq{Command: "DEL", K: k}
-	e.req(clireq)
-}
-
-func (e *HTTPEmerge) Add(k string, n int64) error {
-	buf, _ := json.Marshal(n)
-	clireq := &HTTPEmergeReq{Command: "ADD", K: k, V: buf}
-	_, err := e.req(clireq)
-	return err
-}
-
-func (e *HTTPEmerge) Dec(k string, n int64) error {
-	buf, _ := json.Marshal(n)
-	clireq := &HTTPEmergeReq{Command: "DEC", K: k, V: buf}
-	_, err := e.req(clireq)
-	return err
-}
-
-func NewHTTPEmerge(server string, conf string) *HTTPEmerge {
-	var (
-		caCrt     = path.Join(conf, "ca.crt")
-		clientCrt = path.Join(conf, "client.crt")
-		clientKey = path.Join(conf, "client.key")
-	)
-	caData, err := ioutil.ReadFile(caCrt)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	caPool := x509.NewCertPool()
-	caPool.AppendCertsFromPEM(caData)
-
-	cliCrt, err := tls.LoadX509KeyPair(clientCrt, clientKey)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	client := &http.Client{Transport: &http.Transport{
-		Dial: func(network, addr string) (c net.Conn, err error) {
-			c, err = net.DialTimeout(network, addr, 20*time.Second)
-			if err != nil {
-				return nil, err
-			}
-			return
-		},
-		TLSClientConfig: &tls.Config{
-			RootCAs:      caPool,
-			Certificates: []tls.Certificate{cliCrt},
-		},
-	}}
-
-	if !strings.HasPrefix(server, "https://") {
-		server = "https://" + server
-	}
-	return &HTTPEmerge{
-		server: server,
-		client: client,
-	}
-}
-
-func Mem() Emerge                           { return NewJSONEmerge(NewMemDriver()) }
-func Doc(root string) Emerge                { return NewJSONEmerge(NewDocDriver(root)) }
-func Lru(cap int) Emerge                    { return NewJSONEmerge(NewLruDriver(cap)) }
-func Map(root string, cacheSize int) Emerge { return NewJSONEmerge(NewMapDriver(root, cacheSize)) }
-func Cli(server string, conf string) Emerge { return NewHTTPEmerge(server, conf) }
+func Mem() *Emerge            { return NewEmerge(NewMemDriver()) }
+func Doc(root string) *Emerge { return NewEmerge(NewDocDriver(root)) }
+func Lru(size int) *Emerge    { return NewEmerge(NewLruDriver(size)) }
+func Map(root string) *Emerge { return NewEmerge(NewMapDriver(root)) }

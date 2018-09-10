@@ -3,12 +3,10 @@ package acdb
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path"
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 )
 
 func driverEasyCase(t *testing.T, d Driver) {
@@ -24,40 +22,6 @@ func driverEasyCase(t *testing.T, d Driver) {
 		t.FailNow()
 	}
 	d.Del("name")
-}
-
-func emergeEasyCase(t *testing.T, e Emerge) {
-	func() {
-		if err := e.Set("name", "acdb"); err != nil {
-			t.FailNow()
-		}
-		var r string
-		if err := e.Get("name", &r); err != nil {
-			t.FailNow()
-		}
-		if r != "acdb" {
-			t.FailNow()
-		}
-		e.Del("name")
-	}()
-
-	func() {
-		e.Set("n", 0)
-		g := sync.WaitGroup{}
-		g.Add(64)
-		for i := 0; i < 64; i++ {
-			go func() {
-				defer g.Done()
-				e.Add("n", 1)
-			}()
-		}
-		g.Wait()
-		var r int64
-		e.Get("n", &r)
-		if r != 64 {
-			t.FailNow()
-		}
-	}()
 }
 
 func TestMemDriver(t *testing.T) {
@@ -107,22 +71,41 @@ func TestLruDriverFull(t *testing.T) {
 }
 
 func TestMapDriver(t *testing.T) {
-	d := NewMapDriver(path.Join(os.TempDir(), "acdb"), 1024)
+	d := NewMapDriver(path.Join(os.TempDir(), "acdb"))
 	driverEasyCase(t, d)
 }
 
-func TestJSONEmerge(t *testing.T) {
+func TestEmerge(t *testing.T) {
 	e := Mem()
-	emergeEasyCase(t, e)
-}
+	func() {
+		if err := e.Set("name", "acdb"); err != nil {
+			t.FailNow()
+		}
+		var r string
+		if err := e.Get("name", &r); err != nil {
+			t.FailNow()
+		}
+		if r != "acdb" {
+			t.FailNow()
+		}
+		e.Del("name")
+	}()
 
-func TestHTTPEmerge(t *testing.T) {
-	cmd := exec.Command("acdb", "-tls", "/etc/tls")
-	if err := cmd.Start(); err != nil {
-		t.FailNow()
-	}
-	defer cmd.Process.Kill()
-	time.Sleep(time.Second)
-	e := Cli("127.0.0.1:8080", "/etc/tls")
-	emergeEasyCase(t, e)
+	func() {
+		e.Set("n", 0)
+		g := sync.WaitGroup{}
+		g.Add(64)
+		for i := 0; i < 64; i++ {
+			go func() {
+				defer g.Done()
+				e.Add("n", 1)
+			}()
+		}
+		g.Wait()
+		var r int64
+		e.Get("n", &r)
+		if r != 64 {
+			t.FailNow()
+		}
+	}()
 }

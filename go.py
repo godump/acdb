@@ -15,7 +15,6 @@ def test():
 
 def main():
     call(f'go install -i github.com/mohanson/acdb')
-    call(f'go install -i github.com/mohanson/acdb/cmd/acdb')
 
 
 if __name__ == '__main__':
