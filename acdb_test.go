@@ -107,7 +107,7 @@ func TestLruDriverFull(t *testing.T) {
 }
 
 func TestMapDriver(t *testing.T) {
-	d := NewMapDriver(path.Join(os.TempDir(), "acdb"))
+	d := NewMapDriver(path.Join(os.TempDir(), "acdb"), 1024)
 	driverEasyCase(t, d)
 }
 

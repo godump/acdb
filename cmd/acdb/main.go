@@ -18,6 +18,7 @@ import (
 var (
 	flDriver = flag.String("driver", "lru", "Driver")
 	flDoc    = flag.String("doc", "", "Doc root")
+	flCap    = flag.Int("cap", 8192, "LRU cache size")
 	flListen = flag.String("l", ":8080", "Listen address")
 	flTLS    = flag.String("tls", "/etc/tls", "Path of TLS pems")
 	emerge   acdb.Emerge
@@ -88,9 +89,9 @@ func main() {
 	case "doc":
 		emerge = acdb.Doc(root())
 	case "lru":
-		emerge = acdb.Lru(1024)
+		emerge = acdb.Lru(*flCap)
 	case "map":
-		emerge = acdb.Map(root())
+		emerge = acdb.Map(root(), *flCap)
 	}
 
 	var (

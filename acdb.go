@@ -67,7 +67,7 @@ func (d *DocDriver) Get(k string) ([]byte, error) {
 }
 
 func (d *DocDriver) Set(k string, v []byte) error {
-	f, err := os.OpenFile(path.Join(d.root, k), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	f, err := os.OpenFile(path.Join(d.root, k), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -181,10 +181,10 @@ func (d *MapDriver) Del(k string) {
 	d.lru.Del(k)
 }
 
-func NewMapDriver(root string) *MapDriver {
+func NewMapDriver(root string, cacheSize int) *MapDriver {
 	return &MapDriver{
 		doc: NewDocDriver(root),
-		lru: NewLruDriver(1024),
+		lru: NewLruDriver(cacheSize),
 	}
 }
 
@@ -404,5 +404,5 @@ func NewHTTPEmerge(server string, conf string) *HTTPEmerge {
 func Mem() Emerge                           { return NewJSONEmerge(NewMemDriver()) }
 func Doc(root string) Emerge                { return NewJSONEmerge(NewDocDriver(root)) }
 func Lru(cap int) Emerge                    { return NewJSONEmerge(NewLruDriver(cap)) }
-func Map(root string) Emerge                { return NewJSONEmerge(NewMapDriver(root)) }
+func Map(root string, cacheSize int) Emerge { return NewJSONEmerge(NewMapDriver(root, cacheSize)) }
 func Cli(server string, conf string) Emerge { return NewHTTPEmerge(server, conf) }
