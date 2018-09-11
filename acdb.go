@@ -22,6 +22,9 @@ func NewMemDriver() *MemDriver {
 	}
 }
 
+// MemDriver cares to store data on memory, this means that MemDriver is fast.
+// Since there is no expiration mechanism, be careful that it might eats up all
+// your memory.
 type MemDriver struct {
 	data map[string][]byte
 }
@@ -29,7 +32,7 @@ type MemDriver struct {
 func (d *MemDriver) Get(k string) ([]byte, error) {
 	buf, b := d.data[k]
 	if !b {
-		return buf, errors.New("key error: " + k)
+		return buf, errors.New("acdb: key error")
 	}
 	return buf, nil
 }
@@ -52,6 +55,8 @@ func NewDocDriver(root string) *DocDriver {
 	}
 }
 
+// DocDriver use the OS's file system to manage data. In general, any high
+// frequency operation is not recommended unless you have an enough reason.
 type DocDriver struct {
 	root string
 }
@@ -67,7 +72,8 @@ func (d *DocDriver) Get(k string) ([]byte, error) {
 }
 
 func (d *DocDriver) Set(k string, v []byte) error {
-	f, err := os.OpenFile(path.Join(d.root, k), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(path.Join(d.root, k),
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -83,6 +89,15 @@ func (d *DocDriver) Del(k string) {
 	os.Remove(path.Join(d.root, k))
 }
 
+func NewLRUDriver(size int) *LRUDriver {
+	return &LRUDriver{
+		driver: NewMemDriver(),
+		m:      map[string]*list.Element{},
+		l:      &list.List{},
+		size:   size,
+	}
+}
+
 // In computing, cache algorithms (also frequently called cache replacement
 // algorithms or cache replacement policies) are optimizing instructions, or
 // algorithms, that a computer program or a hardware-maintained structure can
@@ -94,15 +109,6 @@ func (d *DocDriver) Del(k string) {
 //
 // Least recently used (LRU), discards the least recently used items first. It
 // has a fixed size(for limit memory usages) and O(1) time lookup.
-func NewLRUDriver(size int) *LRUDriver {
-	return &LRUDriver{
-		driver: NewMemDriver(),
-		m:      map[string]*list.Element{},
-		l:      &list.List{},
-		size:   size,
-	}
-}
-
 type LRUDriver struct {
 	driver Driver
 	m      map[string]*list.Element
@@ -153,6 +159,8 @@ func NewMapDriver(root string) *MapDriver {
 	}
 }
 
+// MapDriver is based on DocDriver and use LRUDriver to provide caching at its
+// interface layer. The size of LRUDriver is always 1024.
 type MapDriver struct {
 	doc *DocDriver
 	lru *LRUDriver
