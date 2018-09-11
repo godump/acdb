@@ -34,13 +34,13 @@ func TestDocDriver(t *testing.T) {
 	driverEasyCase(t, d)
 }
 
-func TestLruDriver(t *testing.T) {
-	d := NewLruDriver(1024)
+func TestLRUDriver(t *testing.T) {
+	d := NewLRUDriver(1024)
 	driverEasyCase(t, d)
 }
 
-func TestLruDriverFull(t *testing.T) {
-	d := NewLruDriver(1024)
+func TestLRUDriverFull(t *testing.T) {
+	d := NewLRUDriver(1024)
 	if d.l.Len() != 0 || len(d.m) != 0 {
 		t.FailNow()
 	}

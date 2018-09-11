@@ -83,8 +83,19 @@ func (d *DocDriver) Del(k string) {
 	os.Remove(path.Join(d.root, k))
 }
 
-func NewLruDriver(size int) *LruDriver {
-	return &LruDriver{
+// In computing, cache algorithms (also frequently called cache replacement
+// algorithms or cache replacement policies) are optimizing instructions, or
+// algorithms, that a computer program or a hardware-maintained structure can
+// utilize in order to manage a cache of information stored on the computer.
+// Caching improves performance by keeping recent or often-used data items in
+// a memory locations that are faster or computationally cheaper to access than
+// normal memory stores. When the cache is full, the algorithm must choose
+// which items to discard to make room for the new ones.
+//
+// Least recently used (LRU), discards the least recently used items first. It
+// has a fixed size(for limit memory usages) and O(1) time lookup.
+func NewLRUDriver(size int) *LRUDriver {
+	return &LRUDriver{
 		driver: NewMemDriver(),
 		m:      map[string]*list.Element{},
 		l:      &list.List{},
@@ -92,14 +103,14 @@ func NewLruDriver(size int) *LruDriver {
 	}
 }
 
-type LruDriver struct {
+type LRUDriver struct {
 	driver Driver
 	m      map[string]*list.Element
 	l      *list.List
 	size   int
 }
 
-func (d *LruDriver) Get(k string) ([]byte, error) {
+func (d *LRUDriver) Get(k string) ([]byte, error) {
 	buf, err := d.driver.Get(k)
 	if err != nil {
 		return []byte{}, err
@@ -108,7 +119,7 @@ func (d *LruDriver) Get(k string) ([]byte, error) {
 	return buf, nil
 }
 
-func (d *LruDriver) Set(k string, v []byte) error {
+func (d *LRUDriver) Set(k string, v []byte) error {
 	if d.l.Len() >= d.size {
 		for i := 0; i < d.size/4; i++ {
 			e := d.l.Back()
@@ -126,7 +137,7 @@ func (d *LruDriver) Set(k string, v []byte) error {
 	return nil
 }
 
-func (d *LruDriver) Del(k string) {
+func (d *LRUDriver) Del(k string) {
 	e, exist := d.m[k]
 	if exist {
 		d.driver.Del(k)
@@ -138,13 +149,13 @@ func (d *LruDriver) Del(k string) {
 func NewMapDriver(root string) *MapDriver {
 	return &MapDriver{
 		doc: NewDocDriver(root),
-		lru: NewLruDriver(1024),
+		lru: NewLRUDriver(1024),
 	}
 }
 
 type MapDriver struct {
 	doc *DocDriver
-	lru *LruDriver
+	lru *LRUDriver
 }
 
 func (d *MapDriver) Get(k string) ([]byte, error) {
@@ -244,5 +255,5 @@ func (e *Emerge) Dec(k string, n int64) error {
 
 func Mem() *Emerge            { return NewEmerge(NewMemDriver()) }
 func Doc(root string) *Emerge { return NewEmerge(NewDocDriver(root)) }
-func Lru(size int) *Emerge    { return NewEmerge(NewLruDriver(size)) }
+func LRU(size int) *Emerge    { return NewEmerge(NewLRUDriver(size)) }
 func Map(root string) *Emerge { return NewEmerge(NewMapDriver(root)) }
