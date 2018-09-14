@@ -198,6 +198,14 @@ func (d *MapDriver) Del(k string) {
 	d.lru.Del(k)
 }
 
+type Client interface {
+	Get(string, interface{}) error
+	Set(string, interface{}) error
+	Del(string)
+	Add(string, int64) error
+	Dec(string, int64) error
+}
+
 func NewEmerge(driver Driver) *Emerge {
 	return &Emerge{driver: driver, m: &sync.Mutex{}}
 }
@@ -261,7 +269,7 @@ func (e *Emerge) Dec(k string, n int64) error {
 	return e.Add(k, -n)
 }
 
-func Mem() *Emerge            { return NewEmerge(NewMemDriver()) }
-func Doc(root string) *Emerge { return NewEmerge(NewDocDriver(root)) }
-func LRU(size int) *Emerge    { return NewEmerge(NewLRUDriver(size)) }
-func Map(root string) *Emerge { return NewEmerge(NewMapDriver(root)) }
+func Mem() Client            { return NewEmerge(NewMemDriver()) }
+func Doc(root string) Client { return NewEmerge(NewDocDriver(root)) }
+func LRU(size int) Client    { return NewEmerge(NewLRUDriver(size)) }
+func Map(root string) Client { return NewEmerge(NewMapDriver(root)) }
