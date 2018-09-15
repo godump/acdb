@@ -4,10 +4,12 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rc4"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 
@@ -43,10 +45,11 @@ type Emerge struct {
 
 func (e *Emerge) Cmd(option *Option) (*Output, error) {
 	pipeReader, pipeWriter := io.Pipe()
-
+	suffix := make([]byte, 16)
+	rand.Read(suffix)
 	go func() {
 		defer pipeWriter.Close()
-		c, err := rc4.NewCipher(e.secret)
+		c, err := rc4.NewCipher(append(e.secret, suffix...))
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -61,6 +64,7 @@ func (e *Emerge) Cmd(option *Option) (*Output, error) {
 	if err != nil {
 		return output, err
 	}
+	req.Header.Set("Secret-Suffix", hex.EncodeToString(suffix))
 	res, err := e.client.Do(req)
 	if err != nil {
 		return output, err

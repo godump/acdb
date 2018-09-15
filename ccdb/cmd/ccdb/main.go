@@ -4,6 +4,7 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rc4"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"log"
@@ -76,7 +77,15 @@ func serveDec(option *ccdb.Option, output *ccdb.Output) {
 }
 
 func serve(w http.ResponseWriter, r *http.Request) {
-	c, _ := rc4.NewCipher(secret)
+	suffixStr := r.Header.Get("Secret-Suffix")
+	if suffixStr == "" {
+		return
+	}
+	suffixRaw, err := hex.DecodeString(suffixStr)
+	if err != nil {
+		return
+	}
+	c, _ := rc4.NewCipher(append(secret, suffixRaw...))
 	reader := cipher.StreamReader{S: c, R: r.Body}
 	option := &ccdb.Option{}
 	if err := json.NewDecoder(reader).Decode(option); err != nil {
