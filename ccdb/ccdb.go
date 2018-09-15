@@ -1,9 +1,13 @@
 package ccdb
 
 import (
-	"bytes"
+	"crypto/cipher"
+	"crypto/md5"
+	"crypto/rc4"
 	"encoding/json"
 	"errors"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -22,25 +26,38 @@ type Output struct {
 	V   []byte `json:"v"`
 }
 
-func NewEmerge(server string) *Emerge {
+func NewEmerge(server string, secret string) *Emerge {
+	h := md5.Sum([]byte(secret))
 	return &Emerge{
 		server: server,
 		client: http.DefaultClient,
+		secret: h[:],
 	}
 }
 
 type Emerge struct {
 	server string
 	client *http.Client
+	secret []byte
 }
 
 func (e *Emerge) Cmd(option *Option) (*Output, error) {
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		defer pipeWriter.Close()
+		c, err := rc4.NewCipher(e.secret)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		w := cipher.StreamWriter{S: c, W: pipeWriter}
+		if err := json.NewEncoder(w).Encode(option); err != nil {
+			log.Fatalln(err)
+		}
+	}()
+
 	output := &Output{}
-	buf, err := json.Marshal(option)
-	if err != nil {
-		return output, err
-	}
-	req, err := http.NewRequest("PUT", e.server, bytes.NewReader(buf))
+	req, err := http.NewRequest("PUT", e.server, pipeReader)
 	if err != nil {
 		return output, err
 	}
@@ -99,6 +116,6 @@ func (e *Emerge) Dec(k string, n int64) error {
 	return err
 }
 
-func Cli(server string) acdb.Client {
-	return NewEmerge(server)
+func Cli(server string, secret string) acdb.Client {
+	return NewEmerge(server, secret)
 }

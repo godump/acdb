@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/cipher"
+	"crypto/md5"
+	"crypto/rc4"
 	"encoding/json"
 	"flag"
 	"log"
@@ -14,17 +17,19 @@ import (
 )
 
 var (
-	flDriverMem = flag.Bool("driver-mem", false, "Use acdb.Mem() for driver")
-	flDriverDoc = flag.Bool("driver-doc", false, "Use acdb.Doc() for driver")
-	flDriverLRU = flag.Bool("driver-lru", false, "Use acdb.LRU() for driver")
-	flDriverMap = flag.Bool("driver-map", false, "Use acdb.Map() for driver")
+	flDriverMem = flag.Bool("mem", false, "Use acdb.Mem() for driver")
+	flDriverDoc = flag.Bool("doc", false, "Use acdb.Doc() for driver")
+	flDriverLRU = flag.Bool("lru", false, "Use acdb.LRU() for driver")
+	flDriverMap = flag.Bool("map", false, "Use acdb.Map() for driver")
 	flPath      = flag.String("path", path.Join(os.TempDir(), "acdb"), "Directory to store data")
 	flSize      = flag.Int("size", 1024, "Database size")
 	flListen    = flag.String("l", ":8080", "Listen address")
+	flSecret    = flag.String("secret", "", "Secret")
 )
 
 var (
 	client acdb.Client
+	secret []byte
 )
 
 func serveGet(option *ccdb.Option, output *ccdb.Output) {
@@ -71,8 +76,10 @@ func serveDec(option *ccdb.Option, output *ccdb.Output) {
 }
 
 func serve(w http.ResponseWriter, r *http.Request) {
+	c, _ := rc4.NewCipher(secret)
+	reader := cipher.StreamReader{S: c, R: r.Body}
 	option := &ccdb.Option{}
-	if err := json.NewDecoder(r.Body).Decode(option); err != nil {
+	if err := json.NewDecoder(reader).Decode(option); err != nil {
 		return
 	}
 	output := &ccdb.Output{K: option.K}
@@ -108,6 +115,11 @@ func main() {
 		} else {
 			return acdb.LRU(*flSize)
 		}
+	}()
+
+	secret = func() []byte {
+		h := md5.Sum([]byte(*flSecret))
+		return h[:]
 	}()
 
 	log.Println("Listen and serve on", *flListen)
