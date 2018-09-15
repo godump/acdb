@@ -1,11 +1,18 @@
 package ccdb
 
 import (
+	"os/exec"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestEmerge(t *testing.T) {
+	cmd := exec.Command("ccdb")
+	cmd.Start()
+	defer cmd.Process.Kill()
+	time.Sleep(time.Second)
+
 	e := Cli("http://127.0.0.1:8080")
 	func() {
 		if err := e.Set("name", "acdb"); err != nil {
