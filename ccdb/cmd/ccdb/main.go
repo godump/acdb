@@ -78,6 +78,7 @@ func serve(w http.ResponseWriter, r *http.Request) {
 	output := &ccdb.Output{K: option.K}
 	defer json.NewEncoder(w).Encode(output)
 
+	log.Println(option.Command, option.K, string(option.V))
 	switch strings.ToUpper(option.Command) {
 	case "GET":
 		serveGet(option, output)
