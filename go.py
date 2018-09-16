@@ -8,9 +8,6 @@ def call(command):
     if r != 0:
         sys.exit(r)
 
-def ccdb():
-    call('go install -i github.com/mohanson/acdb/ccdb/cmd/ccdb')
-    call('go test -v ./ccdb')
 
 def main():
     call('go install -i github.com/mohanson/acdb')
