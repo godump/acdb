@@ -13,7 +13,7 @@ import (
 type Driver interface {
 	Set(k string, v []byte) error
 	Get(k string) ([]byte, error)
-	Del(k string)
+	Del(k string) error
 }
 
 func NewMemDriver() *MemDriver {
@@ -42,8 +42,9 @@ func (d *MemDriver) Set(k string, v []byte) error {
 	return nil
 }
 
-func (d *MemDriver) Del(k string) {
+func (d *MemDriver) Del(k string) error {
 	delete(d.data, k)
+	return nil
 }
 
 func NewDocDriver(root string) *DocDriver {
@@ -85,8 +86,8 @@ func (d *DocDriver) Set(k string, v []byte) error {
 	return nil
 }
 
-func (d *DocDriver) Del(k string) {
-	os.Remove(path.Join(d.root, k))
+func (d *DocDriver) Del(k string) error {
+	return os.Remove(path.Join(d.root, k))
 }
 
 func NewLRUDriver(size int) *LRUDriver {
@@ -130,11 +131,15 @@ func (d *LRUDriver) Set(k string, v []byte) error {
 		for i := 0; i < d.size/4; i++ {
 			e := d.l.Back()
 			k := e.Value.(string)
-			d.Del(k)
+			if err := d.Del(k); err != nil {
+				return err
+			}
 		}
 	}
 
-	d.Del(k)
+	if err := d.Del(k); err != nil {
+		return err
+	}
 	if err := d.driver.Set(k, v); err != nil {
 		return err
 	}
@@ -143,13 +148,16 @@ func (d *LRUDriver) Set(k string, v []byte) error {
 	return nil
 }
 
-func (d *LRUDriver) Del(k string) {
+func (d *LRUDriver) Del(k string) error {
 	e, exist := d.m[k]
 	if exist {
-		d.driver.Del(k)
+		if err := d.driver.Del(k); err != nil {
+			return err
+		}
 		d.l.Remove(e)
 		delete(d.m, k)
 	}
+	return nil
 }
 
 func NewMapDriver(root string) *MapDriver {
@@ -193,15 +201,20 @@ func (d *MapDriver) Set(k string, v []byte) error {
 	return nil
 }
 
-func (d *MapDriver) Del(k string) {
-	d.doc.Del(k)
-	d.lru.Del(k)
+func (d *MapDriver) Del(k string) error {
+	if err := d.doc.Del(k); err != nil {
+		return err
+	}
+	if err := d.lru.Del(k); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Client interface {
 	Get(string, interface{}) error
 	Set(string, interface{}) error
-	Del(string)
+	Del(string) error
 	Add(string, int64) error
 	Dec(string, int64) error
 }
@@ -235,10 +248,10 @@ func (e *Emerge) Set(k string, v interface{}) error {
 	return e.driver.Set(k, buf)
 }
 
-func (e *Emerge) Del(k string) {
+func (e *Emerge) Del(k string) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	e.driver.Del(k)
+	return e.driver.Del(k)
 }
 
 func (e *Emerge) Add(k string, n int64) error {
