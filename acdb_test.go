@@ -22,6 +22,9 @@ func driverEasyCase(t *testing.T, d Driver) {
 		t.FailNow()
 	}
 	d.Del("name")
+	if _, err := d.Get("name"); err != ErrNotExist {
+		t.FailNow()
+	}
 }
 
 func TestMemDriver(t *testing.T) {

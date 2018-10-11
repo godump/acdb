@@ -1,3 +1,7 @@
+// Copyright 2018 Mohanson. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be found
+// in the LICENSE file.
+
 package acdb
 
 import (
@@ -10,12 +14,25 @@ import (
 	"sync"
 )
 
+// Portable analogs of some common system call errors.
+var (
+	ErrNotExist = errors.New("acdb: key does not exist")
+)
+
+// Driver is the interface that wraps the Set/Get and Del method.
+//
+// Set sets bytes with given k.
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 type Driver interface {
 	Set(k string, v []byte) error
 	Get(k string) ([]byte, error)
 	Del(k string) error
 }
 
+// NewMemDriver returns a MemDriver.
 func NewMemDriver() *MemDriver {
 	return &MemDriver{
 		data: map[string][]byte{},
@@ -32,7 +49,7 @@ type MemDriver struct {
 func (d *MemDriver) Get(k string) ([]byte, error) {
 	buf, b := d.data[k]
 	if !b {
-		return buf, errors.New("acdb: key error")
+		return buf, ErrNotExist
 	}
 	return buf, nil
 }
@@ -47,6 +64,7 @@ func (d *MemDriver) Del(k string) error {
 	return nil
 }
 
+// NewDocDriver returns a DocDriver.
 func NewDocDriver(root string) *DocDriver {
 	if err := os.MkdirAll(root, 0755); err != nil {
 		panic(err)
@@ -65,6 +83,9 @@ type DocDriver struct {
 func (d *DocDriver) Get(k string) ([]byte, error) {
 	f, err := os.Open(path.Join(d.root, k))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return []byte{}, ErrNotExist
+		}
 		return []byte{}, err
 	}
 	defer f.Close()
@@ -87,9 +108,14 @@ func (d *DocDriver) Set(k string, v []byte) error {
 }
 
 func (d *DocDriver) Del(k string) error {
-	return os.Remove(path.Join(d.root, k))
+	err := os.Remove(path.Join(d.root, k))
+	if os.IsNotExist(err) {
+		return ErrNotExist
+	}
+	return err
 }
 
+// NewLRUDriver returns a LRUDriver.
 func NewLRUDriver(size int) *LRUDriver {
 	return &LRUDriver{
 		driver: NewMemDriver(),
@@ -160,6 +186,7 @@ func (d *LRUDriver) Del(k string) error {
 	return nil
 }
 
+// NewMapDriver returns a MapDriver.
 func NewMapDriver(root string) *MapDriver {
 	return &MapDriver{
 		doc: NewDocDriver(root),
@@ -181,7 +208,7 @@ func (d *MapDriver) Get(k string) ([]byte, error) {
 	)
 	buf, err = d.lru.Get(k)
 	if err == nil {
-		return buf, err
+		return buf, nil
 	}
 	buf, err = d.doc.Get(k)
 	if err != nil {
