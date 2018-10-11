@@ -17,6 +17,7 @@ import (
 // Portable analogs of some common system call errors.
 var (
 	ErrNotExist = errors.New("acdb: key does not exist")
+	ErrHasExist = errors.New("acdb: key already exists")
 )
 
 // Driver is the interface that wraps the Set/Get and Del method.
@@ -271,10 +272,14 @@ type Client interface {
 	Add(string, int64) error
 	// Dec decrements the number stored at key by n.
 	Dec(string, int64) error
-	// Set key to hold value if key does not exist. In that case, it is equal
-	// to Set. When key already holds a value, no operation is performed. SETNX
-	// is short for "SET if Not exists".
-	SetNx(string, interface{}) error
+	// Some returns true if the key is some.
+	Some(string) bool
+	// None returns true if the key is none.
+	None(string) bool
+	// Set key to hold value if the key is some.
+	SetSome(string, interface{}) error
+	// Set key to hold value if the key is none.
+	SetNone(string, interface{}) error
 }
 
 // NewEmerge returns a Emerge.
@@ -305,6 +310,28 @@ func (e *Emerge) set(k string, v interface{}) error {
 	return e.driver.Set(k, buf)
 }
 
+func (e *Emerge) del(k string) error {
+	return e.driver.Del(k)
+}
+
+func (e *Emerge) some(k string) bool {
+	var a json.RawMessage
+	err := e.get(k, &a)
+	if err == nil {
+		return true
+	}
+	return false
+}
+
+func (e *Emerge) none(k string) bool {
+	var a json.RawMessage
+	err := e.get(k, &a)
+	if err == ErrNotExist {
+		return true
+	}
+	return false
+}
+
 // Get gets and returns the bytes or any error encountered. If the key does
 // not exist, ErrNotExist will be returned.
 func (e *Emerge) Get(k string, v interface{}) error {
@@ -320,29 +347,12 @@ func (e *Emerge) Set(k string, v interface{}) error {
 	return e.set(k, v)
 }
 
-// Set key to hold value if key does not exist. In that case, it is equal to
-// Set. When key already holds a value, no operation is performed. SETNX is
-// short for "SET if Not exists".
-func (e *Emerge) SetNx(k string, v interface{}) error {
-	e.m.Lock()
-	defer e.m.Unlock()
-	var a json.RawMessage
-	err := e.get(k, &a)
-	if err == nil {
-		return nil
-	}
-	if err == ErrNotExist {
-		return e.set(k, v)
-	}
-	return err
-}
-
 // Del dels bytes with given k. If the key does not exist, ErrNotExist will
 // be returned.
 func (e *Emerge) Del(k string) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	return e.driver.Del(k)
+	return e.del(k)
 }
 
 // Add increments the number stored at key by n.
@@ -359,6 +369,40 @@ func (e *Emerge) Add(k string, n int64) error {
 // Dec decrements the number stored at key by n.
 func (e *Emerge) Dec(k string, n int64) error {
 	return e.Add(k, -n)
+}
+
+// Some returns true if the key is some.
+func (e *Emerge) Some(k string) bool {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.some(k)
+}
+
+// None returns true if the key is none.
+func (e *Emerge) None(k string) bool {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.none(k)
+}
+
+// Set key to hold value if the key is some.
+func (e *Emerge) SetSome(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
+	if !e.some(k) {
+		return ErrNotExist
+	}
+	return e.set(k, v)
+}
+
+// Set key to hold value if the key is none.
+func (e *Emerge) SetNone(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
+	if !e.none(k) {
+		return ErrHasExist
+	}
+	return e.set(k, v)
 }
 
 // Mem returns a concurrency-safety Client with MemDriver.

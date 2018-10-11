@@ -80,6 +80,8 @@ func TestMapDriver(t *testing.T) {
 
 func TestEmerge(t *testing.T) {
 	e := Mem()
+
+	// Test Get/Set/Del
 	func() {
 		defer e.Del("k")
 		if err := e.Set("k", "v"); err != nil {
@@ -95,6 +97,7 @@ func TestEmerge(t *testing.T) {
 		e.Del("k")
 	}()
 
+	// Test Add/Dec
 	func() {
 		defer e.Del("n")
 		e.Set("n", 0)
@@ -114,22 +117,49 @@ func TestEmerge(t *testing.T) {
 		}
 	}()
 
+	// Test Some/None
 	func() {
 		defer e.Del("k")
-		if err := e.SetNx("k", "foo"); err != nil {
+		if !e.None("k") {
 			t.FailNow()
 		}
+		if err := e.Set("k", "v"); err != nil {
+			t.FailNow()
+		}
+		if !e.Some("k") {
+			t.FailNow()
+		}
+	}()
+
+	// Test SetSome/SetNone
+	func() {
+		defer e.Del("k1")
+		defer e.Del("k2")
 		var r string
-		e.Get("k", &r)
-		if r != "foo" {
+		if err := e.SetNone("k1", "v1"); err != nil {
 			t.FailNow()
 		}
-		if err := e.SetNx("k", "bar"); err != nil {
-			t.Log(err)
+		e.Get("k1", &r)
+		if r != "v1" {
 			t.FailNow()
 		}
-		e.Get("k", &r)
-		if r != "foo" {
+		if err := e.SetNone("k1", "v2"); err != ErrHasExist {
+			t.FailNow()
+		}
+		e.Get("k1", &r)
+		if r != "v1" {
+			t.FailNow()
+		}
+
+		if err := e.SetSome("k2", "v1"); err != ErrNotExist {
+			t.FailNow()
+		}
+		e.Set("k2", "v1")
+		if err := e.SetSome("k2", "v2"); err != nil {
+			t.FailNow()
+		}
+		e.Get("k2", &r)
+		if r != "v2" {
 			t.FailNow()
 		}
 	}()
