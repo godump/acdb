@@ -46,6 +46,8 @@ type MemDriver struct {
 	data map[string][]byte
 }
 
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
 func (d *MemDriver) Get(k string) ([]byte, error) {
 	buf, b := d.data[k]
 	if !b {
@@ -54,11 +56,14 @@ func (d *MemDriver) Get(k string) ([]byte, error) {
 	return buf, nil
 }
 
+// Set sets bytes with given k.
 func (d *MemDriver) Set(k string, v []byte) error {
 	d.data[k] = v
 	return nil
 }
 
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 func (d *MemDriver) Del(k string) error {
 	delete(d.data, k)
 	return nil
@@ -80,6 +85,8 @@ type DocDriver struct {
 	root string
 }
 
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
 func (d *DocDriver) Get(k string) ([]byte, error) {
 	f, err := os.Open(path.Join(d.root, k))
 	if err != nil {
@@ -93,6 +100,7 @@ func (d *DocDriver) Get(k string) ([]byte, error) {
 	return ioutil.ReadAll(f)
 }
 
+// Set sets bytes with given k.
 func (d *DocDriver) Set(k string, v []byte) error {
 	f, err := os.OpenFile(path.Join(d.root, k),
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
@@ -107,6 +115,8 @@ func (d *DocDriver) Set(k string, v []byte) error {
 	return nil
 }
 
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 func (d *DocDriver) Del(k string) error {
 	err := os.Remove(path.Join(d.root, k))
 	if os.IsNotExist(err) {
@@ -143,6 +153,8 @@ type LRUDriver struct {
 	size   int
 }
 
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
 func (d *LRUDriver) Get(k string) ([]byte, error) {
 	buf, err := d.driver.Get(k)
 	if err != nil {
@@ -152,6 +164,7 @@ func (d *LRUDriver) Get(k string) ([]byte, error) {
 	return buf, nil
 }
 
+// Set sets bytes with given k.
 func (d *LRUDriver) Set(k string, v []byte) error {
 	if d.l.Len() >= d.size {
 		for i := 0; i < d.size/4; i++ {
@@ -174,6 +187,8 @@ func (d *LRUDriver) Set(k string, v []byte) error {
 	return nil
 }
 
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 func (d *LRUDriver) Del(k string) error {
 	e, exist := d.m[k]
 	if exist {
@@ -201,6 +216,8 @@ type MapDriver struct {
 	lru *LRUDriver
 }
 
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
 func (d *MapDriver) Get(k string) ([]byte, error) {
 	var (
 		buf []byte
@@ -218,6 +235,7 @@ func (d *MapDriver) Get(k string) ([]byte, error) {
 	return buf, err
 }
 
+// Set sets bytes with given k.
 func (d *MapDriver) Set(k string, v []byte) error {
 	if err := d.doc.Set(k, v); err != nil {
 		return err
@@ -228,6 +246,8 @@ func (d *MapDriver) Set(k string, v []byte) error {
 	return nil
 }
 
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 func (d *MapDriver) Del(k string) error {
 	if err := d.doc.Del(k); err != nil {
 		return err
@@ -239,22 +259,34 @@ func (d *MapDriver) Del(k string) error {
 }
 
 type Client interface {
+	// Get gets and returns the bytes or any error encountered. If the key does
+	// not exist, ErrNotExist will be returned.
 	Get(string, interface{}) error
+	// Set sets bytes with given k.
 	Set(string, interface{}) error
+	// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+	// be returned.
 	Del(string) error
+	// Add increments the number stored at key by n.
 	Add(string, int64) error
+	// Dec decrements the number stored at key by n.
 	Dec(string, int64) error
 }
 
+// NewEmerge returns a Emerge.
 func NewEmerge(driver Driver) *Emerge {
 	return &Emerge{driver: driver, m: &sync.Mutex{}}
 }
 
+// Emerge is a actuator of the given drive. Do not worry, Is's
+// concurrency-safety.
 type Emerge struct {
 	driver Driver
 	m      *sync.Mutex
 }
 
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
 func (e *Emerge) Get(k string, v interface{}) error {
 	e.m.Lock()
 	defer e.m.Unlock()
@@ -265,6 +297,7 @@ func (e *Emerge) Get(k string, v interface{}) error {
 	return json.Unmarshal(buf, v)
 }
 
+// Set sets bytes with given k.
 func (e *Emerge) Set(k string, v interface{}) error {
 	e.m.Lock()
 	defer e.m.Unlock()
@@ -275,12 +308,15 @@ func (e *Emerge) Set(k string, v interface{}) error {
 	return e.driver.Set(k, buf)
 }
 
+// Del dels bytes with given k. If the key does not exist, ErrNotExist will
+// be returned.
 func (e *Emerge) Del(k string) error {
 	e.m.Lock()
 	defer e.m.Unlock()
 	return e.driver.Del(k)
 }
 
+// Add increments the number stored at key by n.
 func (e *Emerge) Add(k string, n int64) error {
 	e.m.Lock()
 	defer e.m.Unlock()
@@ -305,11 +341,19 @@ func (e *Emerge) Add(k string, n int64) error {
 	return e.driver.Set(k, buf)
 }
 
+// Dec decrements the number stored at key by n.
 func (e *Emerge) Dec(k string, n int64) error {
 	return e.Add(k, -n)
 }
 
-func Mem() Client            { return NewEmerge(NewMemDriver()) }
+// Mem returns a concurrency-safety Client with MemDriver.
+func Mem() Client { return NewEmerge(NewMemDriver()) }
+
+// Doc returns a concurrency-safety Client with DocDriver.
 func Doc(root string) Client { return NewEmerge(NewDocDriver(root)) }
-func LRU(size int) Client    { return NewEmerge(NewLRUDriver(size)) }
+
+// LRU returns a concurrency-safety Client with LRUDriver.
+func LRU(size int) Client { return NewEmerge(NewLRUDriver(size)) }
+
+// Map returns a concurrency-safety Client with MapDriver.
 func Map(root string) Client { return NewEmerge(NewMapDriver(root)) }
