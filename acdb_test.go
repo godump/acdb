@@ -81,20 +81,22 @@ func TestMapDriver(t *testing.T) {
 func TestEmerge(t *testing.T) {
 	e := Mem()
 	func() {
-		if err := e.Set("name", "acdb"); err != nil {
+		defer e.Del("k")
+		if err := e.Set("k", "v"); err != nil {
 			t.FailNow()
 		}
 		var r string
-		if err := e.Get("name", &r); err != nil {
+		if err := e.Get("k", &r); err != nil {
 			t.FailNow()
 		}
-		if r != "acdb" {
+		if r != "v" {
 			t.FailNow()
 		}
-		e.Del("name")
+		e.Del("k")
 	}()
 
 	func() {
+		defer e.Del("n")
 		e.Set("n", 0)
 		g := sync.WaitGroup{}
 		g.Add(64)
@@ -108,6 +110,26 @@ func TestEmerge(t *testing.T) {
 		var r int64
 		e.Get("n", &r)
 		if r != 64 {
+			t.FailNow()
+		}
+	}()
+
+	func() {
+		defer e.Del("k")
+		if err := e.SetNx("k", "foo"); err != nil {
+			t.FailNow()
+		}
+		var r string
+		e.Get("k", &r)
+		if r != "foo" {
+			t.FailNow()
+		}
+		if err := e.SetNx("k", "bar"); err != nil {
+			t.Log(err)
+			t.FailNow()
+		}
+		e.Get("k", &r)
+		if r != "foo" {
 			t.FailNow()
 		}
 	}()

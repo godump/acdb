@@ -271,6 +271,10 @@ type Client interface {
 	Add(string, int64) error
 	// Dec decrements the number stored at key by n.
 	Dec(string, int64) error
+	// Set key to hold value if key does not exist. In that case, it is equal
+	// to Set. When key already holds a value, no operation is performed. SETNX
+	// is short for "SET if Not exists".
+	SetNx(string, interface{}) error
 }
 
 // NewEmerge returns a Emerge.
@@ -285,11 +289,7 @@ type Emerge struct {
 	m      *sync.Mutex
 }
 
-// Get gets and returns the bytes or any error encountered. If the key does
-// not exist, ErrNotExist will be returned.
-func (e *Emerge) Get(k string, v interface{}) error {
-	e.m.Lock()
-	defer e.m.Unlock()
+func (e *Emerge) get(k string, v interface{}) error {
 	buf, err := e.driver.Get(k)
 	if err != nil {
 		return err
@@ -297,15 +297,44 @@ func (e *Emerge) Get(k string, v interface{}) error {
 	return json.Unmarshal(buf, v)
 }
 
-// Set sets bytes with given k.
-func (e *Emerge) Set(k string, v interface{}) error {
-	e.m.Lock()
-	defer e.m.Unlock()
+func (e *Emerge) set(k string, v interface{}) error {
 	buf, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return e.driver.Set(k, buf)
+}
+
+// Get gets and returns the bytes or any error encountered. If the key does
+// not exist, ErrNotExist will be returned.
+func (e *Emerge) Get(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.get(k, v)
+}
+
+// Set sets bytes with given k.
+func (e *Emerge) Set(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.set(k, v)
+}
+
+// Set key to hold value if key does not exist. In that case, it is equal to
+// Set. When key already holds a value, no operation is performed. SETNX is
+// short for "SET if Not exists".
+func (e *Emerge) SetNx(k string, v interface{}) error {
+	e.m.Lock()
+	defer e.m.Unlock()
+	var a json.RawMessage
+	err := e.get(k, &a)
+	if err == nil {
+		return nil
+	}
+	if err == ErrNotExist {
+		return e.set(k, v)
+	}
+	return err
 }
 
 // Del dels bytes with given k. If the key does not exist, ErrNotExist will
@@ -320,25 +349,11 @@ func (e *Emerge) Del(k string) error {
 func (e *Emerge) Add(k string, n int64) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	var (
-		i   int64
-		buf []byte
-		err error
-	)
-	buf, err = e.driver.Get(k)
-	if err != nil {
+	var i int64
+	if err := e.get(k, &i); err != nil {
 		return err
 	}
-	err = json.Unmarshal(buf, &i)
-	if err != nil {
-		return err
-	}
-	i += n
-	buf, err = json.Marshal(i)
-	if err != nil {
-		return err
-	}
-	return e.driver.Set(k, buf)
+	return e.set(k, i+n)
 }
 
 // Dec decrements the number stored at key by n.
