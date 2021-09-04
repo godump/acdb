@@ -188,7 +188,7 @@ func (e *Client) Get(k string) ([]byte, error) {
 func (e *Client) Set(k string, v []byte) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	log.Println("db: set", k, string(v))
+	log.Println("acdb: set", k, string(v))
 	return e.driver.Set(k, v)
 }
 
