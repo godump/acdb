@@ -184,12 +184,13 @@ func (d *MapDriver) Del(k string) error {
 // Client is a actuator of the given drive. Do not worry, Is's concurrency-safety.
 type Client struct {
 	driver Driver
+	log    int
 	m      *sync.Mutex
 }
 
 // NewClient returns a Client.
 func NewClient(driver Driver) *Client {
-	return &Client{driver: driver, m: &sync.Mutex{}}
+	return &Client{driver: driver, log: 1, m: &sync.Mutex{}}
 }
 
 // Get the value of a key.
@@ -203,7 +204,9 @@ func (e *Client) Get(k string) ([]byte, error) {
 func (e *Client) Set(k string, v []byte) error {
 	e.m.Lock()
 	defer e.m.Unlock()
-	log.Println("acdb: set", k, string(v))
+	if e.log != 0 {
+		log.Println("acdb: set", k, string(v))
+	}
 	return e.driver.Set(k, v)
 }
 
@@ -277,6 +280,11 @@ func (e *Client) Has(k string) bool {
 func (e *Client) Nil(k string) bool {
 	_, err := e.Get(k)
 	return err != nil
+}
+
+// Log set the log level.
+func (e *Client) Log(l int) {
+	e.log = l
 }
 
 // Mem returns a concurrency-safety Client with MemDriver.
