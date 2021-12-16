@@ -20,6 +20,7 @@ type Driver interface {
 	Get(k string) ([]byte, error)
 	Set(k string, v []byte) error
 	Del(k string) error
+	Clr()
 }
 
 // MemDriver cares to store data on memory, this means that MemDriver is fast. Since there is no expiration mechanism,
@@ -56,6 +57,11 @@ func (d *MemDriver) Del(k string) error {
 	return nil
 }
 
+// Clr.
+func (d *MemDriver) Clr() {
+	d.data = map[string][]byte{}
+}
+
 // DocDriver use the OS's file system to manage data. In general, any high frequency operation is not recommended
 // unless you have an enough reason.
 type DocDriver struct {
@@ -83,6 +89,11 @@ func (d *DocDriver) Set(k string, v []byte) error {
 // Del the value of a key.
 func (d *DocDriver) Del(k string) error {
 	return os.Remove(path.Join(d.root, k))
+}
+
+// Clr.
+func (d *DocDriver) Clr() {
+	panic("unreachable")
 }
 
 // LruDriver implemention. In computing, cache algorithms (also frequently called cache replacement algorithms or cache
@@ -124,6 +135,11 @@ func (d *LruDriver) Set(k string, v []byte) error {
 func (d *LruDriver) Del(k string) error {
 	d.data.Del(k)
 	return nil
+}
+
+// Clr.
+func (d *LruDriver) Clr() {
+	d.data.Clr()
 }
 
 // MapDriver is based on DocDriver and use LruDriver to provide caching at its
@@ -179,6 +195,11 @@ func (d *MapDriver) Del(k string) error {
 		return err
 	}
 	return nil
+}
+
+// Clr.
+func (d *MapDriver) Clr() {
+	panic("unreachable")
 }
 
 // Client is a actuator of the given drive. Do not worry, Is's concurrency-safety.
@@ -261,6 +282,13 @@ func (e *Client) GetString(k string) (string, error) {
 	var r string
 	err := e.GetDecode(k, &r)
 	return r, err
+}
+
+// Clr.
+func (e *Client) Clr() {
+	e.m.Lock()
+	defer e.m.Unlock()
+	e.driver.Clr()
 }
 
 // Del the value of a key.
