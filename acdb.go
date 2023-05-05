@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/godump/doa"
 	"github.com/godump/lru"
@@ -20,7 +21,6 @@ type Driver interface {
 	Get(k string) ([]byte, error)
 	Set(k string, v []byte) error
 	Del(k string) error
-	Clr()
 }
 
 // MemDriver cares to store data on memory, this means that MemDriver is fast. Since there is no expiration mechanism,
@@ -57,11 +57,6 @@ func (d *MemDriver) Del(k string) error {
 	return nil
 }
 
-// Clr.
-func (d *MemDriver) Clr() {
-	d.data = map[string][]byte{}
-}
-
 // DocDriver use the OS's file system to manage data. In general, any high frequency operation is not recommended
 // unless you have an enough reason.
 type DocDriver struct {
@@ -91,11 +86,6 @@ func (d *DocDriver) Del(k string) error {
 	return os.Remove(path.Join(d.root, k))
 }
 
-// Clr.
-func (d *DocDriver) Clr() {
-	panic("unreachable")
-}
-
 // LruDriver implemention. In computing, cache algorithms (also frequently called cache replacement algorithms or cache
 // replacement policies) are optimizing instructions, or algorithms, that a computer program or a hardware-maintained
 // structure can utilize in order to manage a cache of information stored on the computer. Caching improves performance
@@ -106,21 +96,21 @@ func (d *DocDriver) Clr() {
 // Least recently used (LRU), discards the least recently used items first. It has a fixed size(for limit memory usages)
 // and O(1) time lookup.
 type LruDriver struct {
-	data *lru.Lru
+	data *lru.Lru[string, []byte]
 }
 
 // NewLruDriver returns a LruDriver.
 func NewLruDriver(size int) *LruDriver {
 	return &LruDriver{
-		data: lru.NewLru(size),
+		data: lru.New[string, []byte](size, time.Hour*24),
 	}
 }
 
 // Get the value of a key.
 func (d *LruDriver) Get(k string) ([]byte, error) {
-	v, b := d.data.Get(k)
+	v, b := d.data.GetExists(k)
 	if b {
-		return v.([]byte), nil
+		return v, nil
 	}
 	return nil, os.ErrNotExist
 }
@@ -135,11 +125,6 @@ func (d *LruDriver) Set(k string, v []byte) error {
 func (d *LruDriver) Del(k string) error {
 	d.data.Del(k)
 	return nil
-}
-
-// Clr.
-func (d *LruDriver) Clr() {
-	d.data.Clr()
 }
 
 // MapDriver is based on DocDriver and use LruDriver to provide caching at its
@@ -195,11 +180,6 @@ func (d *MapDriver) Del(k string) error {
 		return err
 	}
 	return nil
-}
-
-// Clr.
-func (d *MapDriver) Clr() {
-	panic("unreachable")
 }
 
 // Client is a actuator of the given drive. Do not worry, Is's concurrency-safety.
@@ -282,13 +262,6 @@ func (e *Client) GetString(k string) (string, error) {
 	var r string
 	err := e.GetDecode(k, &r)
 	return r, err
-}
-
-// Clr.
-func (e *Client) Clr() {
-	e.m.Lock()
-	defer e.m.Unlock()
-	e.driver.Clr()
 }
 
 // Del the value of a key.
